@@ -1,5 +1,13 @@
 package com.example.geonotesteaching;
 
+import com.example.geonotesteaching.export.JsonExporter;
+import com.example.geonotesteaching.geo.GeoArea;
+import com.example.geonotesteaching.geo.GeoPoint;
+import com.example.geonotesteaching.geo.Match;
+import com.example.geonotesteaching.model.*;
+import com.example.geonotesteaching.service.Describe;
+import com.example.geonotesteaching.service.Timeline;
+
 import java.time.Instant;
 import java.util.Scanner;
 
@@ -73,7 +81,8 @@ public class GeoNotes {
                     case 2 -> listNotes();
                     case 3 -> filterNotes();
                     case 4 -> exportNotesToJson();
-                    case 5 -> running = false;
+                    case 5 -> checkPointInArea();
+                    case 6 -> running = false;
                     default -> System.out.println("❌ Opción no válida. Inténtalo de nuevo.");
                 }
             } catch (NumberFormatException e) {
@@ -88,12 +97,14 @@ public class GeoNotes {
     }
 
     private static void printMenu() {
+        // Muestra el menú principal de opciones al usuario en la CLI.
         System.out.println("\n--- Menú ---");
         System.out.println("1. Crear una nueva nota");
         System.out.println("2. Listar todas las notas");
         System.out.println("3. Filtrar notas por palabra clave");
         System.out.println("4. Exportar notas a JSON (Text Blocks)");
-        System.out.println("5. Salir");
+        System.out.println("5. ¿Punto dentro de un área? (Match.isInArea)");
+        System.out.println("6. Salir");
         System.out.print("Elige una opción: ");
     }
 
@@ -101,19 +112,15 @@ public class GeoNotes {
         System.out.println("\n--- Crear una nueva nota ---");
 
         // 'var' (Java 10) para inferencia local: útil para código más legible; en APIs públicas, mejor tipos explícitos.
-        System.out.print("Título: ");
-        var title = scanner.nextLine();
-        System.out.print("Contenido: ");
-        var content = scanner.nextLine();
+        System.out.print("Título: ");  var title = scanner.nextLine();
+        System.out.print("Contenido: ");  var content = scanner.nextLine();
 
         /*
          * Lectura robusta de números: mejor parsear desde nextLine() para controlar errores y limpieza del buffer.
          * (Si fuese una app real, haríamos bucles hasta entrada válida).
          */
-        System.out.print("Latitud: ");
-        var lat = Double.parseDouble(scanner.nextLine());
-        System.out.print("Longitud: ");
-        var lon = Double.parseDouble(scanner.nextLine());
+        System.out.print("Latitud: ");   var lat = Double.parseDouble(scanner.nextLine());
+        System.out.print("Longitud: ");  var lon = Double.parseDouble(scanner.nextLine());
         try {
 
             /*
@@ -125,11 +132,16 @@ public class GeoNotes {
 
             var geoPoint = new GeoPoint(lat, lon);
 
+            // Para demostrar adjuntos:
+            Attachment att = null;
+            if (title.toLowerCase().contains("foto")) att = new Photo("http://img", 2000, 1200);
+            else if (title.toLowerCase().contains("audio")) att = new Audio("http://aud", 180);
+            else if (title.toLowerCase().contains("link")) att = new Link("http://example", "Ejemplo");
             /*
              * Instant.now() (java.time) para timestamps — la API java.time es la recomendada desde Java 8.
              * attachment lo dejamos a null en este flujo simple; podrías pedirlo al usuario.
              */
-            var note = new Note(noteCounter++, title, content, geoPoint, Instant.now(), null);
+            var note = new Note(noteCounter++, title, content, geoPoint, Instant.now(), att);
             timeline.addNote(note);
             System.out.println("✅ Nota creada con éxito.");
         } catch (IllegalArgumentException e) {
@@ -168,7 +180,7 @@ public class GeoNotes {
          * Streams (desde Java 8) — muy similares a las funciones de colección en Kotlin.
          * Filtramos por título o contenido y recogemos en una List inmutable (toList() desde Java 16 retorna una lista no modificable).
          */
-        var filtered = timeline.getNotes().values().stream()
+        var filtered = timeline.asCollection().stream()
                 .filter(n -> n.title().contains(keyword) || n.content().contains(keyword))
                 .toList();
         if (filtered.isEmpty()) {
@@ -181,25 +193,85 @@ public class GeoNotes {
 
     private static void exportNotesToJson() {
         /*
-         * INNER CLASS NO ESTÁTICA:
-         * - Timeline.Render es una clase interna "no estática" (inner class).
-         * - Por eso se instancia con: timeline.new Render()
-         * - Así Render queda LIGADA a ESTA instancia de Timeline (y accede a sus 'notes').
-         *
-         * Si Render fuera 'static', se instanciaría como 'new Timeline.Render(timeline)' pasando la Timeline explícita.
+         * Exporta todas las notas almacenadas en timeline a formato JSON usando JsonExporter.
+         * timeline.asCollection() devuelve una vista Collection<Note> de las notas, útil para el exportador.
+         * JsonExporter utiliza Text Blocks para generar el JSON de forma legible y moderna.
          */
-        var renderer = timeline.new Render(); // ¿Por qué esto no funciona new Timeline().new Render();?
-
-        /*
-         * TEXT BLOCKS (Java 15) — ver Timeline.Render:
-         * - Allí se usan literales de cadena multilínea """ ... """ para construir JSON legible.
-         * - Se normaliza la indentación y no necesitas escapar comillas constantemente.
-         */
-        String json = renderer.export();
-
+        var exporter = new JsonExporter(timeline.asCollection());
+        String json = exporter.export();
         System.out.println("\n--- Exportando notas a JSON ---");
         System.out.println(json);
     }
+
+
+    /**
+     * Opción 6 del menú.
+     * Pide dos esquinas de un rectángulo (lat/lon) y un punto, normaliza el área con min/max
+     * y llama a Match.isInArea(point, area). También muestra Match.where(point).
+     */
+    private static void checkPointInArea() {
+        try {
+            System.out.println("\n--- Definir área (dos esquinas) ---");
+            System.out.print("Esquina A - lat: "); double aLat = Double.parseDouble(scanner.nextLine());
+            System.out.print("Esquina A - lon: "); double aLon = Double.parseDouble(scanner.nextLine());
+            System.out.print("Esquina B - lat: "); double bLat = Double.parseDouble(scanner.nextLine());
+            System.out.print("Esquina B - lon: "); double bLon = Double.parseDouble(scanner.nextLine());
+
+            // Normalizamos el rectángulo para que topLeft.lat <= bottomRight.lat y lon igual (esperado por Match.isInArea actual).
+            double minLat = Math.min(aLat, bLat);
+            double maxLat = Math.max(aLat, bLat);
+            double minLon = Math.min(aLon, bLon);
+            double maxLon = Math.max(aLon, bLon);
+
+            GeoArea area = new GeoArea(new GeoPoint(minLat, minLon), new GeoPoint(maxLat, maxLon));
+
+            System.out.println("\n--- Punto a comprobar ---");
+            System.out.print("Punto - lat: "); double pLat = Double.parseDouble(scanner.nextLine());
+            System.out.print("Punto - lon: "); double pLon = Double.parseDouble(scanner.nextLine());
+            GeoPoint p = new GeoPoint(pLat, pLon);
+
+            boolean inside = Match.isInArea(p, area);
+            String where = Match.where(p);
+
+            System.out.printf("\nÁrea normalizada: [lat:[%.4f..%.4f], lon:[%.4f..%.4f]]%n",
+                    minLat, maxLat, minLon, maxLon);
+            System.out.printf("Punto: %s → dentro del área: %s%n", where, inside ? "✅ SÍ" : "❌ NO");
+        } catch (IllegalArgumentException ex) {
+            System.out.println("❌ Datos inválidos: " + ex.getMessage());
+        }
+    }
+
+    @SuppressWarnings("unused")
+    private static void checkPointInArea2() {
+        try {
+            System.out.println("\n--- Definir área (dos esquinas) ---");
+            System.out.print("Esquina A - lat: "); double aLat = Double.parseDouble(scanner.nextLine());
+            System.out.print("Esquina A - lon: "); double aLon = Double.parseDouble(scanner.nextLine());
+            System.out.print("Esquina B - lat: "); double bLat = Double.parseDouble(scanner.nextLine());
+            System.out.print("Esquina B - lon: "); double bLon = Double.parseDouble(scanner.nextLine());
+
+            GeoArea area = new GeoArea(new GeoPoint(aLat, aLon), new GeoPoint(bLat, bLon));
+
+            // Solo para mostrar/explicar en clase:
+            double minLat = Math.min(aLat, bLat), maxLat = Math.max(aLat, bLat);
+            double minLon = Math.min(aLon, bLon), maxLon = Math.max(aLon, bLon);
+
+            System.out.println("\n--- Punto a comprobar ---");
+            System.out.print("Punto - lat: "); double pLat = Double.parseDouble(scanner.nextLine());
+            System.out.print("Punto - lon: "); double pLon = Double.parseDouble(scanner.nextLine());
+            GeoPoint p = new GeoPoint(pLat, pLon);
+
+            boolean inside = Match.isInArea(p, area);
+            String where = Match.where(p);
+
+            System.out.printf("\nÁrea normalizada: [lat:[%.4f..%.4f], lon:[%.4f..%.4f]]%n",
+                    minLat, maxLat, minLon, maxLon);
+            System.out.printf("Punto: %s → dentro del área: %s%n", where, inside ? "✅ SÍ" : "❌ NO");
+        } catch (IllegalArgumentException ex) {
+            System.out.println("❌ Datos inválidos: " + ex.getMessage());
+        }
+    }
+
 
     private static void seedExamples() {
         /*

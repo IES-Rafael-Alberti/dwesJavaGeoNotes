@@ -1,4 +1,4 @@
-package com.example.geonotesteaching;
+package com.example.geonotesteaching.geo;
 
 // Un 'record' es una clase inmutable y concisa para modelar datos. Java genera automáticamente
 // el constructor, los getters, los métodos equals(), hashCode() y toString().
