@@ -42,3 +42,4 @@ Thumbs.db
 
 # 🧬 Archivos de stash de compilación (como los que mencionaste)
 build/tmp/compileJava/compileTransaction/stash-dir/
+/fix-teaching-complete-and-use.patch
