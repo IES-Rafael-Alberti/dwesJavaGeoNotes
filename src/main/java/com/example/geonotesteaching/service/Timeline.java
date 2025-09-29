@@ -9,12 +9,10 @@ import java.util.Map;
 /**
  * Timeline gestiona una colección de notas (Note) manteniendo el orden de inserción.
  * Es útil para mostrar las notas en el mismo orden en que fueron añadidas, por ejemplo en una línea de tiempo.
- * <p>
  * Implementación:
  * - Utiliza un 'SequencedMap' para garantizar el orden y permitir acceso eficiente al primer y último elemento.
  * - En Java 21, LinkedHashMap implementa la interfaz SequencedMap, lo que permite compatibilidad y acceso a métodos como firstEntry() y lastEntry().
  * - A diferencia de HashMap, el orden de las notas es predecible y estable.
- * <p>
  * Nota: El método getNotes() expone el mapa interno, por lo que se debe tener cuidado con la mutabilidad externa.
  */
 public final class Timeline {
